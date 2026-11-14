@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>STUDY RANK ARENA | 아이디 로그인 & 파워 관리자 모드</title>
+  <!-- html2canvas 라이브러리 (영수증 PNG 저장용) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <!-- Firebase SDK 라이브러리 로드 -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif;
+      background-color: #0f1117;
+      color: #f3f4f6;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* 로그인/회원가입 화면 */
+    .auth-container {
+      width: 100%;
+      max-width: 400px;
+      background: #181c25;
+      border: 1px solid #2a303c;
+      border-radius: 18px;
+      padding: 28px 24px;
+      margin-top: 40px;
+      box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+    }
+    .auth-container h1 { font-size: 1.4rem; text-align: center; margin-bottom: 6px; }
+    .auth-sub { font-size: 0.82rem; color: #9ca3af; text-align: center; margin-bottom: 20px; }
+    .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+    .auth-tab {
+      padding: 10px; background: #101319; border: 1px solid #2c3340; color: #9ca3af;
+      border-radius: 8px; cursor: pointer; font-weight: 700; text-align: center; font-size: 0.85rem;
+    }
+    .auth-tab.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+
+    /* 메인 앱 컨테이너 */
+    .app-wrapper { width: 100%; max-width: 1140px; display: none; }
+    .app-wrapper.active { display: block; }
+
+    .header {
+      width: 100%;
+      background: #181c25;
+      border: 1px solid #2a303c;
+      border-radius: 16px;
+      padding: 14px 20px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .header h1 { font-size: 1.2rem; font-weight: 900; }
+    .header-btns { display: flex; gap: 8px; align-items: center; }
+    .btn-guide {
+      background: #3b82f6; color: #fff; border: none; padding: 8px 14px;
+      border-radius: 20px; font-size: 0.82rem; font-weight: 700; cursor: pointer;
+    }
+    .btn-logout {
+      background: #374151; color: #f3f4f6; border: none; padding: 8px 14px;
+      border-radius: 20px; font-size: 0.82rem; font-weight: 700; cursor: pointer;
+    }
+
+    .guide {
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid #3b82f6;
+      border-radius: 16px;
+      padding: 16px 20px;
+      margin-bottom: 18px;
+      font-size: 0.84rem;
+      line-height: 1.6;
+    }
+    .guide.hide { display: none; }
+    .guide-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 10px;
+    }
+    @media (max-width: 850px) { .guide-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 500px) { .guide-grid { grid-template-columns: 1fr; } }
+    .g-card { background: rgba(0,0,0,0.25); padding: 10px 12px; border-radius: 10px; }
+    .g-card strong { display: block; color: #60a5fa; margin-bottom: 4px; }
+
+    .main {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    @media (max-width: 1000px) { .main { grid-template-columns: 1fr; max-width: 500px; margin: 0 auto; } }
+
+    .panel {
+      background: #181c25;
+      border: 1px solid #2a303c;
+      border-radius: 18px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .panel h2 {
+      font-size: 1.08rem; font-weight: 800; margin-bottom: 14px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+
+    .tier-box {
+      background: #232936; border: 1px solid #374151;
+      border-radius: 14px; padding: 14px; margin-bottom: 14px;
+    }
+    .tier-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .badge { background: #f59e0b; color: #111; font-weight: 800; padding: 4px 10px; border-radius: 20px; font-size: 0.82rem; }
+    .bar-bg { width: 100%; height: 9px; background: #0f1117; border-radius: 10px; overflow: hidden; margin-bottom: 6px; }
+    .bar-fill { height: 100%; background: #10b981; width: 0%; transition: width 0.3s; }
+    .tier-sub { display: flex; justify-content: space-between; font-size: 0.76rem; color: #9ca3af; }
+
+    .timer-box {
+      background: #11141b; border: 1px solid #2d3545; border-radius: 12px;
+      padding: 10px 14px; margin-bottom: 14px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .timer-num { font-family: monospace; font-size: 1.3rem; font-weight: 800; color: #34d399; }
+    .t-btn { padding: 6px 10px; border: none; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; }
+
+    .focus-alert {
+      background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #f87171;
+      font-size: 0.78rem; padding: 6px 10px; border-radius: 8px; margin-bottom: 12px;
+      display: none; text-align: center; font-weight: bold;
+    }
+    .focus-alert.show { display: block; }
+
+    label { display: block; font-size: 0.8rem; color: #d1d5db; margin: 10px 0 5px; font-weight: 700; }
+    input[type="password"], input[type="text"] {
+      width: 100%; padding: 9px 10px; background: #101319; border: 1px solid #2e3646;
+      border-radius: 8px; color: #fff; font-size: 0.88rem;
+    }
+    input:focus { outline: none; border-color: #10b981; }
+
+    .sub-head {
+      display: grid; grid-template-columns: 2fr 1.6fr 30px; gap: 6px;
+      font-size: 0.72rem; color: #9ca3af; margin-bottom: 4px;
+    }
+    .sub-row {
+      display: grid; grid-template-columns: 2fr 1.6fr 30px; gap: 6px; margin-bottom: 6px; align-items: center;
+    }
+    .time-badge-box {
+      background: #111319; border: 1px solid #2e3646; border-radius: 8px;
+      padding: 8px 10px; font-size: 0.82rem; color: #34d399; font-family: monospace; text-align: center; font-weight: bold;
+    }
+    .btn-del { background: #451a1a; color: #f87171; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; height: 36px; }
+    .btn-add {
+      width: 100%; padding: 8px; background: #222733; border: 1px dashed #4b5563;
+      color: #d1d5db; border-radius: 8px; cursor: pointer; font-size: 0.82rem; margin-top: 2px;
+    }
+    .btn-main {
+      width: 100%; padding: 13px; background: #10b981; color: #052e16; border: none;
+      border-radius: 10px; font-size: 0.95rem; font-weight: 800; cursor: pointer; margin-top: 14px;
+    }
+    .btn-sub {
+      width: 100%; padding: 10px; background: #3b82f6; color: #fff; border: none;
+      border-radius: 10px; font-size: 0.88rem; font-weight: 700; cursor: pointer; margin-top: 8px;
+    }
+
+    .stage { background: #232834; padding: 18px 12px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .receipt {
+      width: 295px; background: #fdfbf7; color: #18181b; padding: 22px 16px;
+      font-family: "Courier New", Courier, monospace; box-shadow: 0 10px 25px rgba(0,0,0,0.45);
+    }
+    .r-center { text-align: center; }
+    .r-tag { display: inline-block; background: #18181b; color: #fff; padding: 3px 8px; font-size: 0.72rem; font-weight: bold; margin: 6px 0 10px; }
+    .r-dash { border-top: 1px dashed #555; margin: 10px 0; }
+    .r-line { display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 4px; }
+    .r-bold { font-weight: 900; font-size: 0.95rem; }
+    .barcode {
+      height: 28px; width: 85%; margin: 10px auto 5px;
+      background: repeating-linear-gradient(90deg, #111 0px, #111 2px, transparent 2px, transparent 5px, #111 5px, #111 6px, transparent 6px, transparent 9px);
+    }
+
+    .rank-list { display: flex; flex-direction: column; gap: 7px; max-height: 250px; overflow-y: auto; }
+    .rank-item {
+      display: flex; justify-content: space-between; align-items: center;
+      background: #11141b; padding: 9px 12px; border-radius: 10px; border: 1px solid #262c38; font-size: 0.85rem;
+    }
+    .rank-item.me { border-color: #10b981; background: rgba(16, 185, 129, 0.15); }
+
+    /* 파워 관리자 대시보드 스타일 */
+    .admin-box {
+      margin-top: 16px; border: 1px dashed #f59e0b; border-radius: 12px;
+      padding: 12px; background: rgba(245, 158, 11, 0.05); display: none;
+    }
+    .admin-box.show { display: block; }
+    .admin-table { width: 100%; font-size: 0.72rem; border-collapse: collapse; margin-top: 8px; }
+    .admin-table th, .admin-table td { border: 1px solid #374151; padding: 5px; text-align: left; }
+    .admin-table th { background: #232936; color: #fbbf24; }
+    .adm-btn { padding: 3px 6px; font-size: 0.68rem; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    .adm-edit { background: #3b82f6; color: #fff; margin-right: 3px; }
+    .adm-del { background: #ef4444; color: #fff; }
+  </style>
+</head>
+<body>
+
+  <!-- 1. 로그인 / 회원가입 화면 (아이디 기반) -->
+  <div class="auth-container" id="authBox">
+    <h1>🔥 STUDY RANK ARENA</h1>
+    <p class="auth-sub">아이디 로그인 및 파워 관리자 시스템</p>
+
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tabLogin" onclick="setAuthMode('login')">로그인</div>
+      <div class="auth-tab" id="tabSignup" onclick="setAuthMode('signup')">회원가입</div>
+    </div>
+
+    <label>아이디 (ID)</label>
+    <input type="text" id="authId" placeholder="사용할 아이디 입력" />
+
+    <label>비밀번호</label>
+    <input type="password" id="authPw" placeholder="비밀번호 6자리 이상" />
+
+    <div id="signupNicknameBox" style="display:none;">
+      <label>닉네임 (랭킹 표시용)</label>
+      <input type="text" id="authNick" placeholder="예: 열공러" />
+    </div>
+
+    <button type="button" class="btn-main" id="authSubmitBtn" onclick="handleAuth()">로그인하기</button>
+  </div>
+
+  <!-- 2. 메인 앱 화면 -->
+  <div class="app-wrapper" id="appWrapper">
+    <div class="header">
+      <h1>🔥 STUDY RANK ARENA <span style="font-size:0.8rem; color:#9ca3af; font-weight:normal;">클라우드 연동</span></h1>
+      <div class="header-btns">
+        <span id="userWelcome" style="font-size:0.82rem; color:#34d399; font-weight:bold;"></span>
+        <button type="button" class="btn-guide" onclick="toggleGuide()">📖 규칙</button>
+        <button type="button" class="btn-logout" onclick="logout()">로그아웃</button>
+      </div>
+    </div>
+
+    <div class="guide" id="guideBox">
+      <strong style="color:#fff; font-size:0.92rem;">💡 클라우드 서버 연동 규칙</strong>
+      <div class="guide-grid">
+        <div class="g-card">
+          <strong>1. 서버 데이터 저장</strong>
+          모든 점수와 누적 시간은 파이어베이스 클라우드 서버에 안전하게 기록됩니다.
+        </div>
+        <div class="g-card">
+          <strong>2. 실시간 랭킹 동기화</strong>
+          다른 사용자들이 제출한 점수가 실시간으로 전체 랭킹 보드에 반영됩니다.
+        </div>
+        <div class="g-card">
+          <strong>3. 포커스 가드</strong>
+          다른 탭으로 이동 시 타이머가 자동 일시정지되어 순공을 엄격하게 검증합니다.
+        </div>
+        <div class="g-card">
+          <strong>4. 파워 관리자</strong>
+          지정된 관리자는 모든 유저의 기록을 직접 관리 및 조정할 수 있습니다.
+        </div>
+      </div>
+    </div>
+
+    <div class="main">
+      <!-- 좌측 패널 -->
+      <div class="panel">
+        <h2>📊 순공 측정 및 과목 배정 <span id="logCnt" style="font-size:0.8rem; color:#f59e0b;">총 0회 인증</span></h2>
+
+        <div class="tier-box">
+          <div class="tier-top">
+            <span class="badge" id="tierBadge">🌱 아이언 수험생</span>
+            <strong id="totalRpText" style="color:#fbbf24;">0 RP</strong>
+          </div>
+          <div class="bar-bg"><div class="bar-fill" id="xpBar"></div></div>
+          <div class="tier-sub">
+            <span id="totalTimeText">누적 순공: 0시간 0분</span>
+            <span id="nextTierText">다음 티어까지 준비중</span>
+          </div>
+        </div>
+
+        <div class="timer-box">
+          <div>
+            <div style="font-size:0.7rem; color:#9ca3af;">⏱️ 순공 검증 타이머</div>
+            <div class="timer-num" id="timerDisplay">00:00:00</div>
+          </div>
+          <div style="display:flex; gap:5px;">
+            <button type="button" class="t-btn" id="btnTimer" style="background:#10b981; color:#052e16;" onclick="toggleTimer()">시작</button>
+            <button type="button" class="t-btn" style="background:#3b82f6; color:#fff;" onclick="resetTimer()">리셋</button>
+          </div>
+        </div>
+
+        <div class="focus-alert" id="focusAlert">⚠️ 화면을 벗어나 타이머가 일시정지되었습니다!</div>
+
+        <label>닉네임</label>
+        <input type="text" id="inName" onchange="updateUserData()" />
+
+        <label>공부 장소</label>
+        <input type="text" id="inPlace" value="독서실 1인실" onchange="updateUserData()" />
+
+        <label>공부한 과목 및 측정 시간 배정</label>
+        <div class="sub-head">
+          <span>과목명</span><span>측정된 순공 시간</span><span></span>
+        </div>
+        <div id="subjectRows"></div>
+        <button type="button" class="btn-add" onclick="addSubRowFromTimer()">+ 타이머 시간으로 과목 추가하기</button>
+
+        <button type="button" class="btn-main" onclick="submitStudy()">✨ 서버에 공부 기록 제출하기</button>
+      </div>
+
+      <!-- 중앙 패널: 영수증 -->
+      <div class="stage">
+        <div class="receipt" id="receiptCard">
+          <div class="r-center">
+            <div class="r-bold">STUDY RANK ARENA</div>
+            <div style="font-size:0.7rem; color:#555;">CLOUD STUDY RECEIPT</div>
+            <div class="r-tag" id="rTierTag">🌱 아이언 수험생</div>
+          </div>
+          <div class="r-dash"></div>
+          <div class="r-line"><span>닉네임:</span> <span id="rName">-</span></div>
+          <div class="r-line"><span>장소:</span> <span id="rPlace">독서실 1인실</span></div>
+          <div class="r-line"><span>일자:</span> <span id="rDate">2026-11-14</span></div>
+          <div class="r-dash"></div>
+          <div id="rSubjectList"></div>
+          <div class="r-dash"></div>
+          <div class="r-line r-bold"><span>오늘 순공 시간:</span> <span id="rTotalTime">0시간 0분</span></div>
+          <div class="r-line r-bold" style="color:#d97706;"><span>획득 RP:</span> <span id="rRp">+0 RP</span></div>
+          <div class="r-dash"></div>
+          <div class="r-center" style="font-size:0.72rem; margin-top:8px;">클라우드 서버 검증 완료</div>
+          <div class="barcode"></div>
+        </div>
+        <button type="button" class="btn-sub" onclick="downloadReceipt()">📸 영수증 PNG 이미지 저장</button>
+      </div>
+
+      <!-- 우측 패널: 실시간 랭킹 보드 & 파워 관리자 전용 제어판 -->
+      <div class="panel">
+        <h2>🏆 실시간 서버 랭킹</h2>
+        <div class="rank-list" id="rankList"></div>
+
+        <!-- 파워 관리자 전용 제어판 -->
+        <div class="admin-box" id="adminBox">
+          <strong style="color:#fbbf24; font-size:0.85rem;">🛡️ 파워 관리자 제어판</strong>
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>아이디/닉네임</th>
+                <th>RP / 순공</th>
+                <th>제어</th>
+              </tr>
+            </thead>
+            <tbody id="adminTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBiMzVqTzs093D5ez_TWCH9qrYUpDnynoc",
+      authDomain: "studytimer-af781.firebaseapp.com",
+      projectId: "studytimer-af781",
+      storageBucket: "studytimer-af781.firebasestorage.app",
+      messagingSenderId: "348556482924",
+      appId: "1:348556482924:web:238669fc51e5f11596bb49"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // 지정된 관리자 아이디 설정
+    const ADMIN_ID = "kwonmj5733";
+
+    let authMode = 'login';
+    let currentUserUid = null;
+    let currentUserId = null;
+    let timerSeconds = 0;
+    let timerInterval = null;
+    let isTimerRunning = false;
+    let userData = {
+      loginId: "",
+      name: "열공러",
+      place: "독서실 1인실",
+      totalRp: 0,
+      totalMinutes: 0,
+      submitCount: 0
+    };
+
+    function getLocalToday() {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    }
+
+    function setAuthMode(mode) {
+      authMode = mode;
+      document.getElementById('tabLogin').className = `auth-tab ${mode === 'login' ? 'active' : ''}`;
+      document.getElementById('tabSignup').className = `auth-tab ${mode === 'signup' ? 'active' : ''}`;
+      document.getElementById('signupNicknameBox').style.display = mode === 'signup' ? 'block' : 'none';
+      document.getElementById('authSubmitBtn').textContent = mode === 'login' ? '로그인하기' : '회원가입 완료';
+    }
+
+    function idToPseudoEmail(id) {
+      return `${id.trim().toLowerCase()}@studyarena.local`;
+    }
+
+    async function handleAuth() {
+      const loginId = document.getElementById('authId').value.trim();
+      const pw = document.getElementById('authPw').value.trim();
+      const nick = document.getElementById('authNick').value.trim();
+
+      if (!loginId || !pw) {
+        alert("아이디와 비밀번호를 입력해주세요.");
+        return;
+      }
+
+      const pseudoEmail = idToPseudoEmail(loginId);
+
+      try {
+        if (authMode === 'signup') {
+          if (!nick) { alert("닉네임을 입력해주세요."); return; }
+          const res = await auth.createUserWithEmailAndPassword(pseudoEmail, pw);
+          currentUserUid = res.user.uid;
+          
+          await db.collection('users').doc(currentUserUid).set({
+            loginId: loginId,
+            name: nick,
+            place: "독서실 1인실",
+            totalRp: 0,
+            totalMinutes: 0,
+            submitCount: 0
+          }, { merge: true });
+          alert("회원가입 성공!");
+        } else {
+          const res = await auth.signInWithEmailAndPassword(pseudoEmail, pw);
+          currentUserUid = res.user.uid;
+        }
+      } catch (error) {
+        alert("인증 오류: " + error.message);
+      }
+    }
+
+    auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        currentUserUid = user.uid;
+        document.getElementById('authBox').style.display = 'none';
+        document.getElementById('appWrapper').classList.add('active');
+
+        const docRef = db.collection('users').doc(currentUserUid);
+        const doc = await docRef.get();
+        if (doc.exists) {
+          currentUserId = doc.data().loginId;
+        }
+
+        if (currentUserId === ADMIN_ID) {
+          document.getElementById('adminBox').classList.add('show');
+        } else {
+          document.getElementById('adminBox').classList.remove('show');
+        }
+
+        await loadServerData();
+      } else {
+        currentUserUid = null;
+        currentUserId = null;
+        document.getElementById('appWrapper').classList.remove('active');
+        document.getElementById('authBox').style.display = 'block';
+      }
+    });
+
+    async function loadServerData() {
+      if (!currentUserUid) return;
+      const docRef = db.collection('users').doc(currentUserUid);
+      const doc = await docRef.get();
+      if (doc.exists) {
+        userData = doc.data();
+      } else {
+        userData = { loginId: currentUserId || "user", name: "열공러", place: "독서실 1인실", totalRp: 0, totalMinutes: 0, submitCount: 0 };
+        await docRef.set(userData, { merge: true });
+      }
+
+      document.getElementById('inName').value = userData.name || "열공러";
+      document.getElementById('inPlace').value = userData.place || "독서실 1인실";
+      document.getElementById('userWelcome').textContent = `${userData.name || '열공러'}님 환영합니다`;
+      document.getElementById('logCnt').textContent = `총 ${userData.submitCount || 0}회 인증`;
+      
+      updateUI();
+      listenRealtimeRanking();
+    }
+
+    async function updateUserData() {
+      if (!currentUserUid) return;
+      userData.name = document.getElementById('inName').value || "열공러";
+      userData.place = document.getElementById('inPlace').value || "자택";
+      document.getElementById('userWelcome').textContent = `${userData.name}님 환영합니다`;
+
+      try {
+        await db.collection('users').doc(currentUserUid).set({
+          name: userData.name,
+          place: userData.place
+        }, { merge: true });
+      } catch (e) {
+        console.error("데이터 업데이트 실패:", e);
+      }
+      updateUI();
+    }
+
+    function logout() {
+      if (isTimerRunning) toggleTimer();
+      auth.signOut();
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden && isTimerRunning) {
+        toggleTimer();
+        document.getElementById('focusAlert').classList.add('show');
+      }
+    });
+
+    function toggleGuide() {
+      document.getElementById('guideBox').classList.toggle('hide');
+    }
+
+    function toggleTimer() {
+      const btn = document.getElementById('btnTimer');
+      if (!isTimerRunning) {
+        isTimerRunning = true;
+        document.getElementById('focusAlert').classList.remove('show');
+        btn.textContent = "일시정지";
+        btn.style.background = "#f59e0b";
+        timerInterval = setInterval(() => {
+          timerSeconds++;
+          formatTimer();
+        }, 1000);
+      } else {
+        isTimerRunning = false;
+        btn.textContent = "시작";
+        btn.style.background = "#10b981";
+        clearInterval(timerInterval);
+      }
+    }
+
+    function resetTimer() {
+      isTimerRunning = false;
+      clearInterval(timerInterval);
+      document.getElementById('btnTimer').textContent = "시작";
+      document.getElementById('btnTimer').style.background = "#10b981";
+      document.getElementById('focusAlert').classList.remove('show');
+      timerSeconds = 0;
+      formatTimer();
+    }
+
+    function formatTimer() {
+      const hrs = String(Math.floor(timerSeconds / 3600)).padStart(2, '0');
+      const mins = String(Math.floor((timerSeconds % 3600) / 60)).padStart(2, '0');
+      const secs = String(timerSeconds % 60).padStart(2, '0');
+      document.getElementById('timerDisplay').textContent = `${hrs}:${mins}:${secs}`;
+    }
+
+    function addSubRowFromTimer() {
+      if (timerSeconds < 60) {
+        alert("최소 1분 이상 타이머로 집중한 시간만 과목에 추가할 수 있습니다!");
+        return;
+      }
+
+      const container = document.getElementById('subjectRows');
+      const div = document.createElement('div');
+      div.className = 'sub-row';
+      div.dataset.minutes = Math.floor(timerSeconds / 60);
+
+      const hrs = Math.floor(timerSeconds / 3600);
+      const mins = Math.floor((timerSeconds % 3600) / 60);
+      let timeStr = (hrs > 0 ? `${hrs}시간 ` : '') + `${mins}분`;
+
+      div.innerHTML = `
+        <input type="text" class="s-name" value="과목명 입력" placeholder="과목명">
+        <div class="time-badge-box s-time-display">${timeStr}</div>
+        <button type="button" class="btn-del" onclick="this.parentElement.remove(); updateUI();">X</button>
+      `;
+      container.appendChild(div);
+
+      resetTimer();
+      updateUI();
+      alert("⏱️ 타이머 측정 시간이 과목에 배정되었습니다!");
+    }
+
+    function updateUI() {
+      document.getElementById('rName').textContent = userData.name || "익명";
+      document.getElementById('rPlace').textContent = userData.place || "자택";
+      document.getElementById('rDate').textContent = getLocalToday();
+
+      const rows = document.querySelectorAll('.sub-row');
+      let sumMin = 0;
+      let rSubHtml = '';
+
+      rows.forEach(r => {
+        const sName = r.querySelector('.s-name').value || "과목";
+        const mins = parseInt(r.dataset.minutes) || 0;
+        sumMin += mins;
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        rSubHtml += `<div class="r-line"><span>${sName}</span><span>${h > 0 ? h + '시간 ' : ''}${m}분</span></div>`;
+      });
+
+      document.getElementById('rSubjectList').innerHTML = rSubHtml || '<div class="r-line" style="color:#888;"><span>등록된 과목 없음</span><span>0분</span></div>';
+      
+      const todayHrs = Math.floor(sumMin / 60);
+      const todayMins = sumMin % 60;
+      document.getElementById('rTotalTime').textContent = `${todayHrs}시간 ${todayMins}분`;
+
+      const accHrs = Math.floor((userData.totalMinutes || 0) / 60);
+      const accMins = (userData.totalMinutes || 0) % 60;
+      document.getElementById('totalTimeText').textContent = `누적 순공: ${accHrs}시간 ${accMins}분`;
+
+      let tierName = "🌱 아이언 수험생";
+      let nextTier = "브론즈까지 " + (300 - (userData.totalRp || 0)) + " RP";
+      let progress = ((userData.totalRp || 0) % 300) / 3;
+
+      const rp = userData.totalRp || 0;
+      if (rp >= 1500) { tierName = "👑 그랜드마스터"; nextTier = "최고 티어 달성!"; progress = 100; }
+      else if (rp >= 1000) { tierName = "💎 다이아 수험생"; nextTier = "그랜드마스터까지 " + (1500 - rp) + " RP"; }
+      else if (rp >= 600) { tierName = "🥇 골드 수험생"; nextTier = "다이아까지 " + (1000 - rp) + " RP"; }
+      else if (rp >= 300) { tierName = "🥈 브론즈 도전자"; nextTier = "골드까지 " + (600 - rp) + " RP"; }
+
+      document.getElementById('tierBadge').textContent = tierName;
+      document.getElementById('rTierTag').textContent = tierName;
+      document.getElementById('totalRpText').textContent = rp + " RP";
+      document.getElementById('nextTierText').textContent = nextTier;
+      document.getElementById('xpBar').style.width = progress + "%";
+    }
+
+    async function submitStudy() {
+      const rows = document.querySelectorAll('.sub-row');
+      let sumMin = 0;
+      rows.forEach(r => { sumMin += parseInt(r.dataset.minutes) || 0; });
+
+      if (sumMin <= 0) {
+        alert("타이머로 측정한 공부 과목을 먼저 추가해주세요!");
+        return;
+      }
+
+      const earnedRp = Math.floor(sumMin * 1.5);
+      userData.totalRp = (userData.totalRp || 0) + earnedRp;
+      userData.totalMinutes = (userData.totalMinutes || 0) + sumMin;
+      userData.submitCount = (userData.submitCount || 0) + 1;
+
+      document.getElementById('logCnt').textContent = `총 ${userData.submitCount}회 인증`;
+      document.getElementById('rRp').textContent = `+${earnedRp} RP`;
+
+      try {
+        await db.collection('users').doc(currentUserUid).set({
+          loginId: currentUserId,
+          name: userData.name,
+          place: userData.place,
+          totalRp: userData.totalRp,
+          totalMinutes: userData.totalMinutes,
+          submitCount: userData.submitCount
+        }, { merge: true });
+        alert(`🎉 서버에 성공적으로 제출되었습니다! (+${earnedRp} RP 획득)`);
+      } catch (e) {
+        alert("제출 실패 (보안 규칙 또는 네트워크 오류): " + e.message);
+      }
+
+      updateUI();
+    }
+
+    function listenRealtimeRanking() {
+      db.collection('users').orderBy('totalRp', 'desc').onSnapshot((snapshot) => {
+        const container = document.getElementById('rankList');
+        const adminTableBody = document.getElementById('adminTableBody');
+        
+        container.innerHTML = "";
+        if (currentUserId === ADMIN_ID) adminTableBody.innerHTML = "";
+
+        let index = 1;
+
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const targetUid = doc.id;
+          const isMe = targetUid === currentUserUid;
+
+          const div = document.createElement('div');
+          div.className = `rank-item ${isMe ? 'me' : ''}`;
+          div.innerHTML = `
+            <span>${index}. <strong>${data.name || '익명'}</strong> (${data.loginId || 'id'}) ${isMe ? '(나)' : ''}</span>
+            <span style="font-weight:bold; color:${isMe ? '#10b981' : '#9ca3af'}">${data.totalRp || 0} RP</span>
+          `;
+          container.appendChild(div);
+
+          if (currentUserId === ADMIN_ID) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td><b>${data.name}</b><br><span style="color:#9ca3af">(${data.loginId})</span></td>
+              <td>${data.totalRp} RP<br>${data.totalMinutes}분</td>
+              <td>
+                <button class="adm-btn adm-edit" onclick="adminEditUser('${targetUid}', '${data.name}', ${data.totalRp})">수정</button>
+                <button class="adm-btn adm-del" onclick="adminDeleteUser('${targetUid}')">삭제</button>
+              </td>
+            `;
+            adminTableBody.appendChild(tr);
+          }
+
+          index++;
+        });
+      }, (error) => {
+        console.error("실시간 랭킹 수신 오류:", error);
+      });
+    }
+
+    // [관리자 전용 기능] 유저 정보 강제 수정
+    async function adminEditUser(targetUid, currentName, currentRp) {
+      const newName = prompt("새로운 닉네임을 입력하세요:", currentName);
+      if (newName === null) return;
+      const newRp = prompt("새로운 RP 점수를 입력하세요:", currentRp);
+      if (newRp === null || isNaN(newRp)) return;
+
+      try {
+        await db.collection('users').doc(targetUid).update({
+          name: newName,
+          totalRp: parseInt(newRp)
+        });
+        alert("성공적으로 수정되었습니다.");
+      } catch (e) {
+        alert("수정 실패 (파이어베이스 규칙을 확인하세요): " + e.message);
+      }
+    }
+
+    // [관리자 전용 기능] 유저 강제 삭제
+    async function adminDeleteUser(targetUid) {
+      if (!confirm("정말 이 사용자의 데이터를 삭제하시겠습니까?")) return;
+      try {
+        await db.collection('users').doc(targetUid).delete();
+        alert("사용자 데이터가 삭제되었습니다.");
+      } catch (e) {
+        alert("삭제 실패 (파이어베이스 규칙을 확인하세요): " + e.message);
+      }
+    }
+
+    function downloadReceipt() {
+      const receiptElement = document.getElementById('receiptCard');
+      html2canvas(receiptElement, { scale: 2 }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `study_receipt_${getLocalToday()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      });
+    }
+  </script>
+</body>
+</html>
